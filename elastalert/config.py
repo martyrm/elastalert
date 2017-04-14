@@ -54,6 +54,7 @@ alerts_mapping = {
     'sns': alerts.SnsAlerter,
     'hipchat': alerts.HipChatAlerter,
     'slack': alerts.SlackAlerter,
+    'slack-grafana': alerts.SlackGrafanaAlerter,
     'pagerduty': alerts.PagerDutyAlerter,
     'twilio': alerts.TwilioAlerter,
     'victorops': alerts.VictorOpsAlerter,

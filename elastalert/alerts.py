@@ -883,12 +883,12 @@ class HipChatAlerter(Alerter):
                 'hipchat_room_id': self.hipchat_room_id}
 
 
-class GrafanaAlerter(Alerter):
+class SlackGrafanaAlerter(Alerter):
     """ Creates a Slack room message for each alert containing a related grafana graph """
     required_options = frozenset(['slack_webhook_url'])
 
     def __init__(self, rule):
-        super(GrafanaAlerter, self).__init__(rule)
+        super(SlackGrafanaAlerter, self).__init__(rule)
         self.slack_webhook_url = self.rule['slack_webhook_url']
         if isinstance(self.slack_webhook_url, basestring):
             self.slack_webhook_url = [self.slack_webhook_url]
