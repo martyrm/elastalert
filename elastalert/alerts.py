@@ -7,6 +7,7 @@ import subprocess
 import sys
 import warnings
 import stomp
+import uuid
 
 from email.mime.text import MIMEText
 from email.utils import formatdate
@@ -17,6 +18,7 @@ from smtplib import SMTPException
 from socket import error
 
 import boto.sns as sns
+import boto.s3 as s3
 import requests
 from jira.client import JIRA
 from jira.exceptions import JIRAError
@@ -879,6 +881,108 @@ class HipChatAlerter(Alerter):
     def get_info(self):
         return {'type': 'hipchat',
                 'hipchat_room_id': self.hipchat_room_id}
+
+
+class GrafanaAlerter(Alerter):
+    """ Creates a Slack room message for each alert containing a related grafana graph """
+    required_options = frozenset(['slack_webhook_url'])
+
+    def __init__(self, rule):
+        super(GrafanaAlerter, self).__init__(rule)
+        self.slack_webhook_url = self.rule['slack_webhook_url']
+        if isinstance(self.slack_webhook_url, basestring):
+            self.slack_webhook_url = [self.slack_webhook_url]
+        self.slack_proxy = self.rule.get('slack_proxy', None)
+        self.slack_username_override = self.rule.get('slack_username_override', 'elastalert')
+        self.slack_channel_override = self.rule.get('slack_channel_override', '')
+        self.slack_emoji_override = self.rule.get('slack_emoji_override', ':ghost:')
+        self.slack_icon_url_override = self.rule.get('slack_icon_url_override', '')
+        self.slack_msg_color = self.rule.get('slack_msg_color', 'danger')
+        self.slack_parse_override = self.rule.get('slack_parse_override', 'none')
+        self.slack_text_string = self.rule.get('slack_text_string', '')
+
+        self.slack_format_body = self.rule.get('slack_format_body', True)
+        self.grafana_panel_url = self.rule.get('grafana_panel_url', None)
+        self.grafana_dashboard_url = self.rule.get('grafana_dashboard_url', None)
+        self.grafana_s3_bucket = self.rule.get('grafana_s3_bucket', 'rocketmiles-public')
+        self.grafana_s3_prefix = self.rule.get('grafana_s3_prefix', 'elastalert')
+        self.aws_region = self.rule.get('aws_region', 'us-east-1')
+
+    def format_body(self, body):
+        # https://api.slack.com/docs/formatting
+        body = body.encode('UTF-8')
+        if self.slack_format_body:
+            body = body.replace('&', '&amp;')
+            body = body.replace('<', '&lt;')
+            body = body.replace('>', '&gt;')
+        else:
+            body = body.replace(' & ', ' &amp; ')
+        return body
+
+    def fetch_and_upload_graph(self):
+        request_headers = {'Authorization': 'Bearer ' + self.grafana_api_key}
+        r = requests.get(self.grafana_panel_url, headers=request_headers)
+        s3_client = s3.connect_to_region(self.aws_region)
+        bucket = s3_client.get_bucket(self.grafana_s3_bucket)
+        key = bucket.new_key('%s/%s.png' % (self.grafana_s3_prefix.rstrip('/'), uuid.uuid4()))
+        key.set_content_from_string(r.content)
+        key.set_metadata('Content-Type', 'image/png')
+        key.set_acl('public-read')
+        return key.generate_url(expires_in=0, query_auth=False)
+
+    def alert(self, matches):
+        body = self.create_alert_body(matches)
+
+        body = self.format_body(body)
+        # post to slack
+        headers = {'content-type': 'application/json'}
+        # set https proxy, if it was provided
+        proxies = {'https': self.slack_proxy} if self.slack_proxy else None
+
+        if self.grafana_panel_url:
+            graph_url = self.fetch_and_upload_graph()
+            if self.grafana_dashboard_url is None:
+                self.grafana_dashboard_url = graph_url
+        else:
+            graph_url = None
+
+        dashboard_url = self.grafana_dashboard_url
+        if dashboard_url is None:
+            dashboard_url = graph_url
+
+        payload = {
+            'username': self.slack_username_override,
+            'channel': self.slack_channel_override,
+            'parse': self.slack_parse_override,
+            'text': self.slack_text_string,
+            'attachments': [
+                {
+                    'color': self.slack_msg_color,
+                    'title': self.create_title(matches),
+                    'title_link': dashboard_url,
+                    'image_url': graph_url,
+                    'text': body,
+                    'fields': []
+                }
+            ]
+        }
+        if self.slack_icon_url_override != '':
+            payload['icon_url'] = self.slack_icon_url_override
+        else:
+            payload['icon_emoji'] = self.slack_emoji_override
+
+        for url in self.slack_webhook_url:
+            try:
+                response = requests.post(url, data=json.dumps(payload, cls=DateTimeEncoder), headers=headers, proxies=proxies)
+                response.raise_for_status()
+            except RequestException as e:
+                raise EAException("Error posting to slack: %s" % e)
+        elastalert_logger.info("Alert sent to Slack")
+
+    def get_info(self):
+        return {'type': 'slack',
+                'slack_username_override': self.slack_username_override,
+                'slack_webhook_url': self.slack_webhook_url}
 
 
 class SlackAlerter(Alerter):
