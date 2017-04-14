@@ -906,6 +906,7 @@ class SlackGrafanaAlerter(Alerter):
         self.grafana_dashboard_url = self.rule.get('grafana_dashboard_url', None)
         self.grafana_s3_bucket = self.rule.get('grafana_s3_bucket', 'rocketmiles-public')
         self.grafana_s3_prefix = self.rule.get('grafana_s3_prefix', 'elastalert')
+        self.grafana_api_key = self.rule.get('grafana_api_key', '')
         self.aws_region = self.rule.get('aws_region', 'us-east-1')
 
     def format_body(self, body):
@@ -920,12 +921,14 @@ class SlackGrafanaAlerter(Alerter):
         return body
 
     def fetch_and_upload_graph(self):
-        request_headers = {'Authorization': 'Bearer ' + self.grafana_api_key}
+        request_headers = {}
+        if self.grafana_api_key:
+            request_headers = {'Authorization': 'Bearer ' + self.grafana_api_key}
         r = requests.get(self.grafana_panel_url, headers=request_headers)
         s3_client = s3.connect_to_region(self.aws_region)
         bucket = s3_client.get_bucket(self.grafana_s3_bucket)
         key = bucket.new_key('%s/%s.png' % (self.grafana_s3_prefix.rstrip('/'), uuid.uuid4()))
-        key.set_content_from_string(r.content)
+        key.set_contents_from_string(r.content)
         key.set_metadata('Content-Type', 'image/png')
         key.set_acl('public-read')
         return key.generate_url(expires_in=0, query_auth=False)
