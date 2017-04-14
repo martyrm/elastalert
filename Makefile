@@ -25,3 +25,12 @@ clean:
 	find . -name '*.pyc' -delete
 	find . -name '__pycache__' -delete
 	rm -rf virtualenv_run .tox .coverage *.egg-info build
+
+deb: VERSION := ${shell sed -nE 's/^elastalert \((.*)\).*$$/\1/p' debian/changelog}
+deb:
+	@echo "===> building deb elasticalert_$(VERSION)_amd64.deb"
+	@docker rm elastalert-deb 2> /dev/null || true
+	docker build -t elastalert-deb -f debian/Dockerfile .
+	docker create --name elastalert-deb elastalert-deb
+	docker cp elastalert-deb:/home/elastalert_$(VERSION)_amd64.deb .
+	docker rm elastalert-deb
