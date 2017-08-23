@@ -68,6 +68,7 @@ alerts_mapping = {
     'hipchat': alerts.HipChatAlerter,
     'ms_teams': alerts.MsTeamsAlerter,
     'slack': alerts.SlackAlerter,
+    'slack-grafana': alerts.SlackGrafanaAlerter,
     'pagerduty': alerts.PagerDutyAlerter,
     'exotel': alerts.ExotelAlerter,
     'twilio': alerts.TwilioAlerter,
