@@ -987,7 +987,7 @@ class SlackGrafanaAlerter(Alerter):
         key.set_contents_from_string(r.content)
         key.set_metadata('Content-Type', 'image/png')
         key.set_acl('public-read')
-        return key.generate_url(expires_in=0, query_auth=False)
+        return key.generate_url(expires_in=0, query_auth=False).split('?')[0]
 
     def alert(self, matches):
         body = self.create_alert_body(matches)
